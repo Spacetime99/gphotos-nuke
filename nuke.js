@@ -181,8 +181,9 @@
 
       total += batch.length;
       const ms = Math.round(performance.now() - cycleStart);
+      const rate = ((batch.length * 1000) / ms).toFixed(1);
       console.log(
-        `[cycle #${cycle}] selected ${batch.length} tiles (total ${total}) - confirmed in ${ms}ms`,
+        `[cycle #${cycle}] selected ${batch.length} tiles (total ${total}) in ${ms}ms, ${rate} tiles/s`,
       );
     } catch (err) {
       console.warn(`[cycle #${cycle}] error: ${err.message} - continuing`);
@@ -190,9 +191,11 @@
     }
   }
 
-  const elapsed = ((performance.now() - started) / 1000).toFixed(1);
+  const elapsedSec = (performance.now() - started) / 1000;
+  const avgRate = total > 0 ? (total / elapsedSec).toFixed(1) : '0.0';
+  const perMin = total > 0 ? Math.round((total * 60) / elapsedSec) : 0;
   console.log(
-    `[gphotos-nuke] done. deleted=${total} cycles=${cycle} elapsed=${elapsed}s`,
+    `[gphotos-nuke] done. deleted=${total} cycles=${cycle} elapsed=${elapsedSec.toFixed(1)}s avg=${avgRate} tiles/s (${perMin}/min)`,
   );
   delete window.__stopDelete;
 })();
