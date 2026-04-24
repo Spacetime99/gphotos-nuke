@@ -2,7 +2,7 @@
 
 A single-file JavaScript snippet that wipes your Google Photos library by automating the web UI. Paste it into your browser's console, walk away, come back to an empty library.
 
-**Around 400 photos per minute, unattended.** 6,378 photos deleted in 14 minutes in testing. A 50,000-photo library clears in 2 to 4 hours. See [Performance](#performance) for measured numbers.
+**Around 400/min on a laptop, 1500/min on a 4K display, unattended.** 24,128 photos deleted in 15 minutes on 4K in testing. A 50,000-photo library clears in 2-4 hours on a laptop, ~35 minutes on 4K. See [Performance](#performance) for measured numbers.
 
 No install, no extension, no OAuth, no external tool. Works in Chrome, Safari, Firefox, and Edge. Works in any UI language.
 
@@ -59,7 +59,9 @@ In 2026, automating the web UI is the only working approach for "delete my entir
 
 ## Performance
 
-Three runs on a M4 MacBook Air running Safari with `BLOCK_IMAGES = true`:
+Screen size is the single biggest factor: more tiles per viewport means fewer cycles, which means higher throughput. Two reference runs, both with `BLOCK_IMAGES = true`:
+
+**MacBook Air (1440x900), Safari:**
 
 ```
 [gphotos-nuke] done. deleted=475  cycles=22  elapsed=74.1s   avg=6.4 tiles/s (385/min)
@@ -67,16 +69,24 @@ Three runs on a M4 MacBook Air running Safari with `BLOCK_IMAGES = true`:
 [gphotos-nuke] done. deleted=6378 cycles=279 elapsed=856.7s  avg=7.4 tiles/s (447/min)
 ```
 
-The long sustained run is the most representative: **6,378 photos deleted in 14 minutes, averaging 447/min.** The short middle run dipped to 144/min for reasons that weren't obvious (possibly a transient server slowdown or a burst of videos, which take longer per item than photos). Long sweeps don't degrade; the 14-minute run actually came out fastest.
+**4K display (3840x2160), Safari:**
 
-Plan for roughly **300 to 450 photos per minute** typical, with occasional slow patches. Extrapolated wall-time windows:
+```
+[gphotos-nuke] done. deleted=24128 cycles=306 elapsed=906.7s avg=26.6 tiles/s (1597/min)
+```
 
-| Library size | Typical (400/min) | Slow (200/min) |
+The 4K run averaged **79 tiles per cycle** vs. ~14 on the MacBook Air - 3.5x the throughput purely from viewport size. Long sweeps don't degrade: the 15-minute 4K run and the 14-minute MBA run were both the fastest of their series.
+
+The MBA's 144/min short run dipped for reasons that weren't obvious (possibly a transient server slowdown or a burst of videos, which take longer per item than photos).
+
+Plan for roughly **300-450/min on a laptop display, 1200-1600/min on 4K/5K**. Extrapolated wall-time windows:
+
+| Library size | Laptop (400/min) | 4K display (1500/min) |
 | ---: | --- | --- |
-| 1,000 photos | ~3 min | ~5 min |
-| 10,000 photos | ~25 min | ~50 min |
-| 50,000 photos | ~2 h | ~4 h |
-| 100,000 photos | ~4 h | ~8 h |
+| 1,000 photos | ~3 min | <1 min |
+| 10,000 photos | ~25 min | ~7 min |
+| 50,000 photos | ~2 h | ~35 min |
+| 100,000 photos | ~4 h | ~70 min |
 
 Throughput depends on four things, in roughly descending order of impact:
 
