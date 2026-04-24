@@ -2,6 +2,8 @@
 
 A single-file JavaScript snippet that wipes your Google Photos library by automating the web UI. Paste it into your browser's console, walk away, come back to an empty library.
 
+**Around 400 photos per minute, unattended.** A 10,000-photo library clears in ~25 minutes; 50,000 in ~2 hours. See [Performance](#performance) for the measured numbers.
+
 No install, no extension, no OAuth, no external tool. Works in Chrome, Safari, Firefox, and Edge. Works in any UI language.
 
 ---
@@ -54,6 +56,32 @@ In 2026, automating the web UI is the only working approach for "delete my entir
    The script finishes its current cycle and exits cleanly.
 
 ---
+
+## Performance
+
+Measured on a 2024 MacBook running Safari (Italian UI) with `BLOCK_IMAGES = true`:
+
+```
+[gphotos-nuke] done. deleted=475 cycles=22 elapsed=74.1s avg=6.4 tiles/s (385/min)
+```
+
+That's **385 photos per minute** sustained, with no manual intervention. Extrapolated:
+
+| Library size | Estimated wall time |
+| ---: | --- |
+| 1,000 photos | ~3 min |
+| 10,000 photos | ~26 min |
+| 50,000 photos | ~2 h |
+| 100,000 photos | ~4.3 h |
+
+Throughput depends on four things, in roughly descending order of impact:
+
+1. **Zoom level.** More tiles per batch equals fewer cycles equals more photos per second. Zoom out all the way (step 2 of Quick start).
+2. **`BLOCK_IMAGES`.** Thumbnails being rendered add real CPU load and make the grid slow to reflow between cycles.
+3. **Network latency.** Each cycle waits for the confirm dialog and the post-delete grid refresh, both network-bound.
+4. **Google's rate limiter.** On large libraries Google may throttle deletes. The script's stall detection catches this and halts cleanly; reload the page and rerun to continue.
+
+Every run's final log line reports the actual rate so you can tune against it.
 
 ## Tunables
 
