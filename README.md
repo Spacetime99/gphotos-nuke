@@ -2,7 +2,7 @@
 
 A single-file JavaScript snippet that wipes your Google Photos library by automating the web UI. Paste it into your browser's console, walk away, come back to an empty library.
 
-**Around 400 photos per minute, unattended.** A 10,000-photo library clears in ~25 minutes; 50,000 in ~2 hours. See [Performance](#performance) for the measured numbers.
+**Roughly 150 to 400 photos per minute, unattended.** A 10,000-photo library clears in 25 min to 1 h; 50,000 in 2 to 6 h. See [Performance](#performance) for measured numbers.
 
 No install, no extension, no OAuth, no external tool. Works in Chrome, Safari, Firefox, and Edge. Works in any UI language.
 
@@ -59,27 +59,28 @@ In 2026, automating the web UI is the only working approach for "delete my entir
 
 ## Performance
 
-Measured on a 2024 MacBook running Safari (Italian UI) with `BLOCK_IMAGES = true`:
+Two back-to-back runs on a M4 MacBook Air running Safari (Italian UI) with `BLOCK_IMAGES = true`:
 
 ```
-[gphotos-nuke] done. deleted=475 cycles=22 elapsed=74.1s avg=6.4 tiles/s (385/min)
+[gphotos-nuke] done. deleted=475 cycles=22 elapsed=74.1s  avg=6.4 tiles/s (385/min)
+[gphotos-nuke] done. deleted=378 cycles=26 elapsed=157.6s avg=2.4 tiles/s (144/min)
 ```
 
-That's **385 photos per minute** sustained, with no manual intervention. Extrapolated:
+Run 1 hit **385 photos/min**. Run 2, starting immediately after, dropped to **144/min**, almost certainly because Google's backend started throttling deletes. Expect your first minutes to be fast and the rate to fall off on longer sweeps. Extrapolated wall-time windows:
 
-| Library size | Estimated wall time |
-| ---: | --- |
-| 1,000 photos | ~3 min |
-| 10,000 photos | ~26 min |
-| 50,000 photos | ~2 h |
-| 100,000 photos | ~4.3 h |
+| Library size | Fast end (400/min) | Throttled end (150/min) |
+| ---: | --- | --- |
+| 1,000 photos | ~3 min | ~7 min |
+| 10,000 photos | ~25 min | ~1.1 h |
+| 50,000 photos | ~2.1 h | ~5.5 h |
+| 100,000 photos | ~4.2 h | ~11 h |
 
 Throughput depends on four things, in roughly descending order of impact:
 
-1. **Zoom level.** More tiles per batch equals fewer cycles equals more photos per second. Zoom out all the way (step 2 of Quick start).
-2. **`BLOCK_IMAGES`.** Thumbnails being rendered add real CPU load and make the grid slow to reflow between cycles.
-3. **Network latency.** Each cycle waits for the confirm dialog and the post-delete grid refresh, both network-bound.
-4. **Google's rate limiter.** On large libraries Google may throttle deletes. The script's stall detection catches this and halts cleanly; reload the page and rerun to continue.
+1. **Google's rate limiter.** On long sweeps Google slows deletes down to protect their backend. Nothing the script can do about it except detect the stall and halt cleanly; reload the page and rerun to continue.
+2. **Zoom level.** More tiles per batch equals fewer cycles equals more photos per second. Zoom out all the way (step 2 of Quick start).
+3. **`BLOCK_IMAGES`.** Thumbnails being rendered add real CPU load and make the grid slow to reflow between cycles.
+4. **Network latency.** Each cycle waits for the confirm dialog and the post-delete grid refresh, both network-bound.
 
 Every run's final log line reports the actual rate so you can tune against it.
 
