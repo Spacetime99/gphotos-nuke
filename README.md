@@ -1,197 +1,362 @@
-# gphotos-nuke
+# gphotos-nuke — Resilient Google Photos Bulk Deletion
 
-A single-file JavaScript snippet that wipes your Google Photos library by automating the web UI. Paste it into your browser's console, walk away, come back to an empty library.
+A resilient, unattended bulk-deletion tool for Google Photos.
 
-**Around 400/min on a laptop, 1500/min on a 4K display, unattended.** 24,128 photos deleted in 15 minutes on 4K in testing. A 50,000-photo library clears in 2-4 hours on a laptop, ~35 minutes on 4K. See [Performance](#performance) for measured numbers.
+This fork builds on the original **gphotos-nuke** project by **Fabio Concina**, updated to cope with the current Google Photos web interface and its heavily virtualized DOM.
 
-No install, no extension, no OAuth, no external tool. Works in Chrome, Safari, Firefox, and Edge. Works in any UI language.
+It is intended for people who have backed up their Google Photos library and want to remove large numbers of photos without manually selecting thousands of items.
 
----
-
-## ⚠️ Read this before you run it
-
-- **This deletes every photo and video in your main library.** That is the entire point, but it's irreversible after 60 days.
-- Deleted items land in **Google Photos Trash** first. You have **60 days** to recover them before they are permanently purged.
-- If you want a backup, **run [Google Takeout](https://takeout.google.com/) first** and wait for the archive before starting.
-- The script does **not** empty the Trash. If you want immediate permanent deletion, empty the Trash manually afterwards (or wait 60 days).
-- Try the **dry-run mode first** (step 4 below) to confirm the script still works with the current Google Photos UI before letting it loose on your library.
+> **Important:** This script moves photos to the Google Photos **Bin/Trash**.  
+> It **never empties the Bin automatically**.
 
 ---
 
-## Why a DOM script and not the Google Photos API
+## Credits
 
-Since **March 31, 2025**, the Google Photos Library API only lets third-party apps see media they themselves uploaded. There is no `mediaItems.delete` endpoint in the API anyway - the only way to trash an item programmatically would be removing it from its last album. The Picker API that replaced the old read flow has no deletion capability either.
+### Original project and implementation
 
-In 2026, automating the web UI is the only working approach for "delete my entire library."
+**Fabio Concina**
 
----
+Original repository:
 
-## Quick start
+https://github.com/fabioconcina/gphotos-nuke
 
-1. Open <https://photos.google.com> in any desktop browser.
-2. **Zoom out to the minimum** - press Ctrl/Cmd + `-` until the page stops shrinking. This packs more tiles per batch, which is the single biggest speed multiplier.
-3. Open the DevTools console:
-   - **Chrome / Edge / Firefox**: Ctrl/Cmd + Shift + J (or right-click → Inspect → Console).
-   - **Safari**: enable the Develop menu in Settings → Advanced, then Cmd + Option + C. Safari asks you to type `allow pasting` the first time you paste into the console.
-4. **Dry run first** (no changes made). Open [`nuke.js`](./nuke.js), change the top two constants:
-   ```js
-   const MAX_DELETE_COUNT = 10;
-   const DRY_RUN = true;
-   ```
-   Select the entire file, copy, paste into the console, press Enter. You should see a log line like:
-   ```
-   [cycle #1] DRY_RUN: would delete 42 tiles
-   ```
-   Nothing is actually deleted. If you see this, the script is working against your current UI.
-5. **Live run.** Restore the constants to their defaults:
-   ```js
-   const MAX_DELETE_COUNT = Infinity;
-   const DRY_RUN = false;
-   ```
-   Paste the full file again, press Enter. Watch the `[cycle #N] selected K tiles (total M) - confirmed in Tms` logs.
-6. **Abort mid-run** at any time by typing this into the console and pressing Enter:
-   ```js
-   window.__stopDelete = true;
-   ```
-   The script finishes its current cycle and exits cleanly.
+### Resilient unattended redesign and real-world testing
+
+**Jonathan Bates — [Spacetime99](https://github.com/Spacetime99)**
+
+### Implementation and engineering assistance
+
+**ChatGPT by OpenAI**
+
+This version was developed through repeated testing against a real Google Photos library containing thousands of photos.
 
 ---
 
-## Performance
+# Why this version exists
 
-Screen size is the single biggest factor: more tiles per viewport means fewer cycles, which means higher throughput. Two reference runs, both with `BLOCK_IMAGES = true`:
+Google Photos does not currently provide a straightforward **Select All → Delete All** operation for an entire large photo library.
 
-**MacBook Air (1440x900), Safari:**
+The original `gphotos-nuke` demonstrated that deletion could be automated through the Google Photos web interface.
 
+Testing against the current Google Photos UI exposed several additional problems:
+
+- Google Photos aggressively virtualizes the photo grid.
+- DOM elements can disappear or be replaced while they are being selected.
+- Stale photo checkbox nodes can remain in the DOM with zero width and height.
+- Multiple different photos can have identical accessibility labels/timestamps.
+- A photo can disappear between discovery and selection.
+- Scrolling can invalidate previously discovered DOM elements.
+- An apparently empty DOM does not necessarily mean there are no more photos.
+- Selection state must be positively verified before any destructive operation.
+
+This version was redesigned around those behaviours.
+
+---
+
+# What it does
+
+The script continuously:
+
+1. Discovers currently actionable photos.
+2. Selects up to 20 photos.
+3. Verifies which selections actually succeeded.
+4. Drops candidates that disappeared during selection.
+5. Checks that the complete current Google Photos selection belongs to the script.
+6. Opens the Google Photos deletion control.
+7. Verifies the exact **Move to bin / Move to trash** confirmation.
+8. Moves the verified batch to the Bin.
+9. Rediscovers the live DOM.
+10. Automatically scrolls to expose more photos.
+11. Repeats.
+
+A disappearing photo does **not** cause the whole process to stop.
+
+If only part of a batch can be positively verified, the script can continue with the verified subset.
+
+---
+
+# Safety model
+
+Bulk deletion is inherently destructive, so the script deliberately separates recoverable UI failures from destructive actions.
+
+The script is designed to tolerate:
+
+- disappearing candidates
+- stale DOM nodes
+- virtualized elements
+- DOM replacement
+- failed individual selections
+- partial batches
+- temporary lack of rendered photos
+- changing scroll containers
+
+But before pressing the destructive **Move to Bin** confirmation, it requires the current selection to be accounted for.
+
+If the selection cannot be safely reconciled, the script attempts to clear it and rediscover the page rather than blindly deleting it.
+
+## The Bin is never emptied
+
+This is intentional.
+
+Google Photos normally keeps deleted items in the Bin for a period before permanent deletion. Keeping that separate from the automation provides an additional recovery opportunity.
+
+**Verify your backup before manually emptying the Bin.**
+
+---
+
+# Before using it
+
+## 1. Back up your Google Photos library
+
+Google Takeout is the obvious way to export a complete Google Photos library.
+
+https://takeout.google.com/
+
+Do not rely on the deletion script as part of your backup process.
+
+## 2. Verify the backup
+
+Ideally verify:
+
+- all expected Takeout archives were downloaded
+- archives can be opened successfully
+- media files are present
+- important photographs and videos can actually be opened
+
+Only proceed when you are comfortable that your backup is independent of Google Photos.
+
+---
+
+# How to run
+
+Open:
+
+https://photos.google.com/
+
+Use a Chromium-based browser such as Chrome.
+
+Open **Developer Tools → Console**.
+
+Copy the contents of [`nuke.js`](./nuke.js), paste the script into the Console, and run it.
+
+The console will begin reporting progress, for example:
+
+```text
+[gphotos-v8.5] attempting up to 20 candidate(s)
+[gphotos-v8.5] ✓ exact selection ownership confirmed
+[gphotos-v8.5] ✓ moved verified batch of 20 photo(s) to Bin
+[gphotos-v8.5] ✓ batch #12 moved | photos this run=240
 ```
-[gphotos-nuke] done. deleted=475  cycles=22  elapsed=74.1s   avg=6.4 tiles/s (385/min)
-[gphotos-nuke] done. deleted=378  cycles=26  elapsed=157.6s  avg=2.4 tiles/s (144/min)
-[gphotos-nuke] done. deleted=6378 cycles=279 elapsed=856.7s  avg=7.4 tiles/s (447/min)
+
+Google Photos must remain open while the script is operating.
+
+---
+
+# Stop the script
+
+For a graceful stop, enter:
+
+```javascript
+window.__stopDelete = true
 ```
 
-**4K display (3840x2160), Safari:**
+The script checks this flag throughout its wait and processing loops.
 
-```
-[gphotos-nuke] done. deleted=24128 cycles=306 elapsed=906.7s avg=26.6 tiles/s (1597/min)
-```
+To see whether the worker is running:
 
-The 4K run averaged **79 tiles per cycle** vs. ~14 on the MacBook Air - 3.5x the throughput purely from viewport size. Long sweeps don't degrade: the 15-minute 4K run and the 14-minute MBA run were both the fastest of their series.
-
-The MBA's 144/min short run dipped for reasons that weren't obvious (possibly a transient server slowdown or a burst of videos, which take longer per item than photos).
-
-Plan for roughly **300-450/min on a laptop display, 1200-1600/min on 4K/5K**. Extrapolated wall-time windows:
-
-| Library size | Laptop (400/min) | 4K display (1500/min) |
-| ---: | --- | --- |
-| 1,000 photos | ~3 min | <1 min |
-| 10,000 photos | ~25 min | ~7 min |
-| 50,000 photos | ~2 h | ~35 min |
-| 100,000 photos | ~4 h | ~70 min |
-
-Throughput depends on four things, in roughly descending order of impact:
-
-1. **Zoom level.** More tiles per batch equals fewer cycles equals more photos per second. Zoom out all the way (step 2 of Quick start).
-2. **`BLOCK_IMAGES`.** Thumbnails being rendered add real CPU load and make the grid slow to reflow between cycles.
-3. **Network latency.** Each cycle waits for the confirm dialog and the post-delete grid refresh, both network-bound.
-4. **Google's rate limiter.** Sometimes a run will be noticeably slower for reasons that look like server-side throttling. Stall detection catches hard halts; soft slowdowns you just wait through.
-
-Every run's final log line reports the actual rate so you can tune against it.
-
-## Tunables
-
-All at the top of [`nuke.js`](./nuke.js):
-
-| Constant | Default | What it does |
-| --- | --- | --- |
-| `MAX_DELETE_COUNT` | `Infinity` | Stop after N items. Set to a small number for a test run. |
-| `DRY_RUN` | `false` | Select + log but skip the actual delete. Safe way to verify the script. |
-| `BLOCK_IMAGES` | `true` | Monkey-patches `HTMLImageElement` so thumbnails are replaced with a 1×1 transparent GIF before the network request happens. Massive speedup, especially on Safari (which has no DevTools "Block URL" feature). Turn off if the grid layout collapses weirdly. |
-| `STEP_TIMEOUT_MS` | `5000` | Give-up threshold waiting for UI state changes. Raise on very slow networks. |
-| `SETTLE_MS` | `150` | Post-confirm yield before the next cycle starts. |
-| `STALL_LIMIT` | `5` | Halt after this many cycles in a row where the top-of-grid tile hasn't changed. Catches the case where Google is temporarily rate-limiting deletions so you don't loop forever thinking you're making progress. Adapted from [JuliusBairaktaris/Google-Photos-Deletion-Script](https://github.com/JuliusBairaktaris/Google-Photos-Deletion-Script). |
-
----
-
-## Troubleshooting
-
-**"no more tiles visible - library appears empty" on the first cycle, but photos are clearly on the page.**
-Google has changed the DOM. Run this in the console to inspect the tile structure:
-
-```js
-document.querySelectorAll('[role="main"]').forEach((m, i) =>
-  console.log(`main[${i}] checkboxes=${m.querySelectorAll('[role="checkbox"]').length}`)
-);
+```javascript
+window.__gphotosRunning
 ```
 
-If neither `main` contains checkboxes, the tile anchor has moved - open an issue with the output and I'll update the selector.
+`true` means the worker is running.
 
-**"waitFor timeout" after the first delete.**
-The confirm dialog's button layout has changed. The current strategy is "last text-bearing button in the last `[role="dialog"]`". If Google added extra buttons to the dialog, this heuristic may miss. Inspect the dialog in DevTools and open an issue.
+`false` means it has ended.
 
-**Grid layout looks broken with overlapping rows.**
-`BLOCK_IMAGES = true` replaces thumbnails with 1×1 placeholders, which can confuse Google Photos' aspect-ratio logic. Set `BLOCK_IMAGES = false` and use the browser-level block instead (Chrome DevTools → Network tab → Block request URL → `*.googleusercontent.com`).
-
-**Safari rejects the paste.**
-Type `allow pasting` in the console, press Enter, then paste again.
-
-**The script runs but is slow.**
-Check you zoomed out all the way (step 2 of Quick start) - this is the biggest lever. Open Activity Monitor; if the Safari/Chrome helper is pegged at 100% CPU rendering thumbnails, confirm `BLOCK_IMAGES` is `true` and reload the page before pasting (the patch only affects images loaded after the script runs).
+For an immediate hard stop, reload or close the Google Photos tab.
 
 ---
 
-## How it works
+# Browser console warnings
 
-The script is ~180 lines of vanilla JS, no dependencies. Rough flow per cycle:
+Google Photos itself generates substantial console output.
 
-1. Query `[role="checkbox"]` inside the `[role="main"]` landmark that contains the photo grid.
-2. Click the first checkbox; shift-click the last. Google's grid treats this as a range-select and checks everything in between - O(1) clicks regardless of batch size.
-3. Wait for the toolbar delete button (`div[data-delete-origin] button`) to appear.
-4. Click it. Wait for the `[role="dialog"]` confirm modal.
-5. Click the last text-bearing button in that dialog (Google's Material convention places the destructive action last, which keeps the script locale-independent).
-6. Wait for the dialog to dismiss, then loop.
+Messages such as:
 
-All waits are `requestAnimationFrame`-polled predicates rather than fixed sleeps, so each cycle ends the moment the next DOM state arrives - not on a timer.
+```text
+ERR_BLOCKED_BY_CLIENT
+```
 
-Selectors are intentionally ARIA-role-based and locale-agnostic. They will eventually drift when Google re-skins the UI. When that happens, the failure mode is a clean timeout, not a silent wrong-thing-clicked.
+or Chrome performance warnings such as:
 
----
+```text
+[Violation] 'setTimeout' handler took ...
+```
 
-## Prior art and alternatives
+do not necessarily indicate that `gphotos-nuke` has failed.
 
-This isn't a new idea - several projects solve the same problem in different shapes. This one exists because none of them exactly matched what I wanted (single file, no install, locale-agnostic, fast enough without browser-specific tricks, works in Safari). Credit where due:
+Look specifically for messages beginning with:
 
-- **[mrishab/google-photos-delete-tool](https://github.com/mrishab/google-photos-delete-tool)** - the original console script most other tools derive from, this one included. Uses generated class selectors like `.ckGgle` (which Google churns), per-tile clicks (O(N) per cycle), fixed 10s/2s sleeps, English UI only. If you already have it installed and it works for you, you don't need this one.
+```text
+[gphotos-v8.5]
+```
 
-- **[shtse8/Google-Photos-Delete-Tool](https://github.com/shtse8/Google-Photos-Delete-Tool)** - the most polished option overall. Ships as a **Chrome extension** with a proper UI, plus a script-injection fallback. If you want a click-to-run experience and are on Chrome, start here. Extension-only means no Safari/Firefox.
+and check:
 
-- **[JuliusBairaktaris/Google-Photos-Deletion-Script](https://github.com/JuliusBairaktaris/Google-Photos-Deletion-Script)** - a modern async/await rewrite of the console-script approach, similar in spirit to this project. Closest cousin.
-
-- **[xob0t/Google-Photos-Toolkit](https://github.com/xob0t/Google-Photos-Toolkit)** - a **userscript** (Tampermonkey-style) with a much broader scope: filter, search, organize, and delete. If you want more than just "delete everything," this is the toolkit-grade option.
-
-### What's specifically different about this one
-
-- **Single file, no install.** Copy, paste, run. No extension permissions prompt, no userscript manager, no npm.
-- **Shift-click range selection.** Per-cycle click count is O(1) regardless of batch size - select first tile, shift-click last, done. Most of the scripts above click each tile individually.
-- **Locale-agnostic selectors.** Targets ARIA roles (`[role="checkbox"]`, `[role="dialog"]`, `[role="main"]`) and structural positions (last text-bearing button in the confirm dialog). No English-only string matching, no brittle generated class names like `.ckGgle` that Google churns.
-- **Event-driven waits.** Every step uses `requestAnimationFrame`-polled predicates instead of fixed `setTimeout` sleeps, so each cycle finishes the moment the UI actually transitions.
-- **Works in Safari at full speed.** The `BLOCK_IMAGES` option monkey-patches image loading in-page, so you get the Chrome-DevTools-"Block request URL" speedup in any browser.
-- **Dry-run mode.** Verify the script matches the current Google Photos DOM before trusting it with your library.
-- **Stall detection.** Halts cleanly if Google rate-limits deletions, so you don't loop forever with no progress. Idea adapted from JuliusBairaktaris/Google-Photos-Deletion-Script above.
-
-If you hit a selector break and want a drop-in replacement while waiting for a fix here, try one of the above. They're all solving the same problem from slightly different angles.
+```javascript
+window.__gphotosRunning
+```
 
 ---
 
-## License
+# Google Photos virtualization
 
-MIT.
+The current Google Photos interface does not keep every photograph represented by a permanent DOM element.
+
+Instead, it creates, removes and replaces elements as the user moves through the library.
+
+For that reason, this version deliberately does **not** assume that:
+
+```text
+DOM element == permanent photo identity
+```
+
+It continually rediscoveries the live interface and treats old DOM references as disposable.
+
+It also ignores stale photo controls whose rendered dimensions are `0 × 0`.
 
 ---
 
-## Contributing
+# Duplicate photo labels
 
-Fork, patch the selectors, open a PR. The only thing that changes over time is Google's DOM - if you hit a timeout, inspect the grid / toolbar / dialog with DevTools and update the three anchors in [`nuke.js`](./nuke.js):
+Google Photos can expose different photographs with identical accessibility labels, for example:
 
-- `queryTiles()` - how to find photo-tile checkboxes.
-- `DELETE_BTN_SELECTOR` - the toolbar delete button.
-- `findConfirmButton()` - the confirm button in the delete dialog.
+```text
+Photo – Portrait – 3 Jul 2020, 23:16:13
+```
+
+Therefore an `aria-label` or timestamp cannot safely be treated as a globally unique photo identifier.
+
+The script uses labels as useful recovery information but performs additional selection-state verification before destructive actions.
+
+---
+
+# Automatic scrolling
+
+When no actionable photos are currently available, the script does **not** assume the library is empty.
+
+Instead, it attempts to locate the active scroll container and continues scrolling through the virtualized library.
+
+An empty rendered window is therefore treated as:
+
+> "Nothing actionable is currently rendered."
+
+not:
+
+> "There are no photos left."
+
+The worker continues until explicitly stopped.
+
+---
+
+# Important limitations
+
+This project automates an undocumented Google Photos web interface.
+
+Google can change that interface at any time.
+
+That means a script that works today may require modification after a Google Photos UI update.
+
+Before using it on an important library:
+
+- make a backup
+- verify the backup
+- watch the first few batches
+- check that the expected photos are moving to the Bin
+- stop immediately if behaviour differs from what is documented here
+
+There is no official Google Photos bulk-deletion API behind this project.
+
+---
+
+# Contributing
+
+Testing, bug reports and improvements are welcome.
+
+Particularly useful reports include:
+
+- browser and version
+- approximate library size
+- the last `[gphotos-v8.5]` messages before a failure
+- whether Google Photos changed the DOM during selection
+- whether the script recovered automatically
+- screenshots of unexpected UI states, with personal information removed
+
+Please **do not post Google authentication tokens, cookies or other account credentials** in issues.
+
+---
+
+# Development history
+
+The resilient version grew out of testing against a multi-thousand-photo Google Photos library.
+
+Several approaches were tested before the current design, including:
+
+- synthetic range selection
+- date-group selection
+- automatic date-group scrolling
+- strict DOM-element identity
+- DOM-element reacquisition
+- individual-photo verified batching
+
+Testing demonstrated that Google's virtualization makes strict DOM identity too brittle for long unattended runs.
+
+The current architecture instead follows:
+
+```text
+discover
+   ↓
+select what still exists
+   ↓
+positively verify selection
+   ↓
+drop vanished candidates
+   ↓
+verify complete selection ownership
+   ↓
+move verified selection to Bin
+   ↓
+discard old DOM state
+   ↓
+rediscover
+   ↓
+scroll
+   ↓
+repeat
+```
+
+The central principle is:
+
+> **Be tolerant while discovering and selecting; be conservative at the destructive action.**
+
+---
+
+# Disclaimer
+
+This software performs bulk deletion operations on Google Photos.
+
+Use it entirely at your own risk.
+
+Back up and verify your data before running it. The contributors cannot guarantee compatibility with future versions of Google Photos or recovery of deleted data.
+
+---
+
+# License
+
+This fork retains the licensing of the original **gphotos-nuke** project.
+
+See [`LICENSE`](./LICENSE) for the applicable license terms.
+
+Original project:
+
+https://github.com/fabioconcina/gphotos-nuke
